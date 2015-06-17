@@ -1,0 +1,845 @@
+/*Java code for knock-out mutant simulations:
+ - Following code uses COPASI java bindings. They could be found here:- http://www.copasi.org/tiki-index.php?page_ref_id=108 
+ - The code uses model written in COPASI. 
+ - In order to execute this code save a COPASI model in the same directory where is code is placed and also make a duplicate COPASI file.
+ - Our copasi model is named as "EGFRcopasiModel.cps" and a duplicate file is named as "EGFRcopasiModel2.cps"
+ - The produced output could be imported in LogicFriday in-order to produce a Logicome. 
+ */
+
+import java.util.ArrayList;
+import colomoto.*;
+import mddlib.*;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Scanner;
+import java.lang.*;
+import java.math.BigDecimal;
+import java.io.*;
+import org.COPASI.CCompartment;
+import org.COPASI.CCopasiDataModel;
+import org.COPASI.CCopasiMessage;
+import org.COPASI.CCopasiMethod;
+import org.COPASI.CCopasiObjectName;
+import org.COPASI.CCopasiParameter;
+import org.COPASI.CCopasiReportSeparator;
+import org.COPASI.CCopasiRootContainer;
+import org.COPASI.CCopasiStaticString;
+import org.COPASI.CCopasiTask;
+import org.COPASI.CMetab;
+import org.COPASI.CModel;
+import org.COPASI.CModelEntity;
+import org.COPASI.CModelValue;
+import org.COPASI.COPASI;
+import org.COPASI.CReaction;
+import org.COPASI.CRegisteredObjectName;
+import org.COPASI.CReportDefinition;
+import org.COPASI.CReportDefinitionVector;
+import org.COPASI.CTrajectoryMethod;
+import org.COPASI.CTrajectoryProblem;
+import org.COPASI.CTrajectoryTask;
+import org.COPASI.ReportItemVector;
+import colomoto.logicalmodel.LogicalModel;
+import org.omg.PortableInterceptor.ACTIVE;
+import java.io.*;  
+
+public class EGFRSimulation
+{
+
+public static void main(String[] args)
+ {
+	long startTime = System.currentTimeMillis();
+	int i2 = (int) ('U') + (int)((int)'0' *(int)'A'*(int)'D') ;
+ 	 System.out.println('\n'+ "****************************"+ (char) (2768)+
+ 			 "   Sample EGFR model simulation  "+(char) (2768)+" ****************************" + '\n' + '\n'+
+ 			 "Please check the code and make sure that you have loaded TWO COPASI files containing the same model statistics.\n\nWe need to make two lists containing the same INTERFACE components.");
+ 	 
+     assert CCopasiRootContainer.getRoot() != null;
+     CCopasiDataModel dataModel = CCopasiRootContainer.addDatamodel();
+     CCopasiDataModel dataModel1 = CCopasiRootContainer.addDatamodel();
+     assert CCopasiRootContainer.getDatamodelList().size() == 1;
+     /* ************************** Loading COPASI model ************************** */
+     //Here we are loading two COPASI files having same model statistics. Later we will need two array lists
+     //containing the same interface components coming from the different COPASI files. 
+     dataModel.loadModel("EGFRcopasiModel.cps");
+     dataModel1.loadModel("EGFRcopasiModel2.cps");
+     //Two identical models.
+     CModel model = dataModel.getModel();
+     CModel model1 = dataModel1.getModel();
+    // System.out.println(model.getReaction(2).getParameters().getParameter(1).toString());
+       
+     assert model != null;
+		 
+     /* ************************** calling creatReport method /* ***********************  */
+     CReportDefinition report = createReport(dataModel, model);
+     CTrajectoryTask trajectoryTask = getTrajectoryTask(dataModel, model,report);
+			
+     trajectoryTask.getTimeSeries().save("testNOGlobal.csv",true,";");
+     //Go to the report definition and change the time steps.
+     long TimeSteps = trajectoryTask.getTimeSeries().getRecordedSteps();
+     System.out.println("\nWould you like to continue ? : (y/n) ");
+     Scanner ans = new Scanner(System.in); 
+     String answer = ans.next();
+     double setInitPercentage = 0.01;// * 100 : Set the percentage value for setting new threshold value.
+		double per = 1;
+		int skip = 50;
+		int precision = 0;
+    
+     if (answer.equalsIgnoreCase("y"))
+     {
+    	    
+     System.out.println(" " + model.getMetabolite(1).getInitialConcentration()+ "\nInterface components are as follows : \n ");
+		
+	 List <CMetab> Interface  = new ArrayList<CMetab>();
+     List <CMetab> Interface1  = new ArrayList<CMetab>();
+	
+	 int count = 0;
+	 for (int r = 0; r<model.getMetabolites().size(); r++)
+     {
+	   		   if(( 
+	   				model.getMetabolite(r).getObjectDisplayName().equals("[(EGF-EGFR*)^2-GAP]") ||
+	   				model.getMetabolite(r).getObjectDisplayName().equals("[Ras-GTP*]") ||
+	   				model.getMetabolite(r).getObjectDisplayName().equals("[(EGF-EGFR*)^2-GAP-Shc*-Grb2-Sos]") ||
+	   				model.getMetabolite(r).getObjectDisplayName().equals("[(EGF-EGFR*)^2-GAP-Grb2-Sos]") ||
+	   				model.getMetabolite(r).getObjectDisplayName().equals("[Ras-GTP]") ||
+	   				model.getMetabolite(r).getObjectDisplayName().equals("[Raf*]") ||
+	   				model.getMetabolite(r).getObjectDisplayName().equals("[MEK-PP]") ||
+	   		   		model.getMetabolite(r).getObjectDisplayName().equals("[ERK-PP]"))&&(!model.getMetabolite(r).getNotes().contains("No Change")) )
+	   		   {
+	   		   
+	   			   System.out.println("species : " + r + " = "+ model.getMetabolite(r).getObjectDisplayName());
+	   		   		Interface.add(model.getMetabolite(r));
+	   		   		Interface1.add(model1.getMetabolite(r));
+	   			   count ++; 		     		   
+	   		   }
+	   		   
+     
+			
+     }
+	 System.out.println("\nMaximum values attained by  input,output and interface components, and their respective indices are as follows: ");
+	 for(int m=0; m<model.getMetabolites().size();m++) 
+		{
+		 	float largeNumber = 0;
+		 	
+		 			if(trajectoryTask.getTimeSeries().getTitle(m).equals("[EGF]") ||
+							trajectoryTask.getTimeSeries().getTitle(m).equals("[(EGF-EGFR*)^2-GAP]") ||
+							trajectoryTask.getTimeSeries().getTitle(m).equals("[(EGF-EGFR*)^2-GAP-Shc*-Grb2-Sos]") ||
+							trajectoryTask.getTimeSeries().getTitle(m).equals("[(EGF-EGFR*)^2-GAP-Grb2-Sos]") ||
+							trajectoryTask.getTimeSeries().getTitle(m).equals("[Ras-GTP]") ||
+							trajectoryTask.getTimeSeries().getTitle(m).equals("[Ras-GTP*]") ||
+							trajectoryTask.getTimeSeries().getTitle(m).equals("[Raf*]") || 
+							trajectoryTask.getTimeSeries().getTitle(m).equals("[MEK-PP]") ||
+							trajectoryTask.getTimeSeries().getTitle(m).equals("[ERK-PP]"))
+					{
+					 System.out.print("\n"+m +"  :" +trajectoryTask.getTimeSeries().getTitle(m));
+					 largeNumber = (float) trajectoryTask.getTimeSeries().getData(0, m);
+							 for (int i = 0; i <TimeSteps; i++) 
+							 	{
+								 if ((float) trajectoryTask.getTimeSeries().getData(i, m) > largeNumber)
+								 	{
+									 	largeNumber = (float) trajectoryTask.getTimeSeries().getData(i, m);
+								 	}
+							 	}
+					 
+							 loopj: for (int j = 0; j < TimeSteps; j++)
+							 	{
+								 if(largeNumber == (float) trajectoryTask.getTimeSeries().getData(j, m))
+								 	{
+									 /*Using 0 precision places.*/
+	  									BigDecimal largeValue1 = new BigDecimal(largeNumber).setScale(precision,BigDecimal.ROUND_DOWN);
+	  									Double largeNumber1 = new Double(largeValue1.doubleValue()); 
+	  							        
+	  							        /*Converted into the double values having 0 precisions.*/
+	  									
+									 System.out.println("\nLargest number index "+j + '\n'+"The value is "+ largeNumber1);//(float) trajectoryTask.getTimeSeries().getData(j, m));
+												 for(int i=0; i<Interface.size();i++)
+												 {
+												 	if(Interface.get(i).getObjectDisplayName().toString().equals(trajectoryTask.getTimeSeries().getTitle(m)))
+												 	{
+												 		Interface.get(i).setInitialValue(largeNumber1);
+												 		Interface1.get(i).setInitialValue(largeNumber1);
+												 	}
+												 }
+					        	        break loopj;
+								 	}
+					       
+							 	}
+					}
+		} 
+     	
+    	
+ /* ******************************************************************************************************** */
+	 System.out.print("\nDo you want to simulate the model for different combinations of active/inactive interface components ?" + '\n' + " (y/n):");
+     Scanner in = new Scanner(System.in); 
+     String input = in.next();
+    
+     if (input.equalsIgnoreCase("y"))
+      {
+		    	System.out.println("Total interface species : " + Interface.size());
+			   	System.out.println("\nThese species are assigned with active / inactive state values." +
+			   						" Active state value will be the maximum value and inactive state value will be 0:" );
+			   	
+			   	   	
+			   //int totalSim = 4; 
+			  int totalSim = (int) Math.pow(2,Interface.size());
+			  	
+  	 			System.out.println("Here we simulate the loop: \n "+ totalSim);
+  	 			int[][] multi = new int[totalSim][Interface.size()+1];
+  	 			//int[][] multi = new int[totalSim][Interface.size()];
+  	  	 		
+  	 			int[][] BooleanOutput = new int[totalSim][Interface.size()+1];
+  	 			
+  	 			//String [] nameS = new String [Interface.size()];
+  	 				String [] nameS = new String [Interface.size()+1];
+  	  	 		
+  	 			nameS[Interface.size()] = "Simulation";
+  	 			
+					  for (int i=0; i<totalSim; i++)
+							 {
+						
+						  			System.out.println("\n~~~~~~~~~~"+"  Simulation number  : "+i+" ~~~~~~~~~~\n");								
+									double active = 0;	
+									double inactive  = 0;
+									multi[i][0] = i;
+									for (int q=(Interface.size())-1; q>=0; q--)
+										{
+											nameS[q] = Interface.get(q).getObjectDisplayName();
+											int t = (i/(int) Math.pow(2, q))%2;		
+											
+												if((t==0) )
+													{
+														
+														for(int k=0;k<model.getMetabolites().size();k++)
+															{																
+																if(model.getMetabolite(k).getObjectDisplayName().equals(Interface.get(q).getObjectDisplayName()))
+																		{
+																		
+																	 		model.getMetabolite(k).setInitialValue(0);
+																		
+																			multi[i][q+1] = 0;
+																			
+																			System.out.println("INACTIVE___" + model.getMetabolite(k).getObjectDisplayName() + " = " + 
+																										model.getMetabolite(k).getInitialValue());
+																											
+																												
+																		 }
+															}
+													   									
+																	
+																
+													}
+												if((t==1) )
+													{
+														for(int k=0;k<model.getMetabolites().size();k++)
+															{
+															
+																if(model.getMetabolite(k).getObjectDisplayName().equals(Interface.get(q).getObjectDisplayName()))
+																		{
+																				model.getMetabolite(k).setInitialValue((double)Interface1.get(q).getInitialValue()*(setInitPercentage));
+																				multi[i][q+1] = 1;
+																				System.out.println("__ACTIVE___" + model.getMetabolite(k).getObjectDisplayName() + " = " +
+																												model.getMetabolite(k).getInitialValue());
+																												
+																												
+																		}
+															}
+														}
+												model.updateInitialValues();
+											}	
+																		
+						   
+					   
+								model.updateInitialValues();
+												
+								String name = Integer.toString(i);						
+							
+								CTrajectoryTask trajectoryTask1 = getTrajectoryTask(dataModel, model,report);
+								//trajectoryTask1.getTimeSeries().save((name +".csv"),true,";");
+			     /* Following loop will find largest values from the recent simulation results for all the interface species. */
+								int logic; float largeData1;
+								BooleanOutput[i][0] = i;
+		  						for(int s=Interface1.size()-1;s>=0;s--)
+		  						{
+		  							logic = 0; largeData1 = 0;
+		  							nameS[s] = Interface.get(s).getObjectDisplayName();
+		  							for(int t =1; t<trajectoryTask1.getTimeSeries().getNumVariables(); t++)
+		  							{
+		  								if(trajectoryTask.getTimeSeries().getTitle(t).equals(Interface.get(s).getObjectDisplayName()))
+										{
+		  									
+		  									largeData1 = (float) trajectoryTask1.getTimeSeries().getData(skip+1, t);
+		  									for (int m = skip+2; m <=TimeSteps; m++) 
+		  										{
+		  											if ((double) trajectoryTask1.getTimeSeries().getData(m, t) > largeData1)
+		  											{
+		  												largeData1 = (float) trajectoryTask1.getTimeSeries().getData(m, t);
+		  											}
+		  										}
+		  									/*Using 0 precision places.*/
+		  									BigDecimal largeValue = new BigDecimal(largeData1).setScale(precision,BigDecimal.ROUND_DOWN);
+		  									Double largeData = new Double(largeValue.doubleValue()); 
+		  							        
+		  							        /*Converted into the double values having 0 precisions.*/
+		  									
+		  									System.out.println("\nLargest value in the time series " + 
+		  									trajectoryTask1.getTimeSeries().getTitle(t) + ": = " + largeData + '\t' + 
+		  									" The index is ");
+		  								
+		  									
+			  								if(largeData >= ((per)*Interface1.get(s).getInitialValue()))
+											{
+			  									logic = 1;
+			  									BooleanOutput[i][s+1] = 1;
+												System.out.println((per*100) + "% value in the species list "+Interface1.get(s).getInitialValue()*(per) + 
+														".....Logical value : = " + logic);
+											}
+			  								else
+			  								{
+			  									logic = 0;
+			  									BooleanOutput[i][s+1] = 0;
+			  									System.out.println((per*100)+ "% value in the species list "+Interface1.get(s).getInitialValue()*(per) + 
+													".....Logical value : = " + logic);
+										
+			  								}
+										}
+		  								
+		  							}
+		  							
+		  						}
+		  						
+							 }
+		//Input table
+					  System.out.println("\n\nFollowing is the input table : \n");
+					  for(int k=nameS.length-1;k>=0;k--)
+					  {
+
+					         System.out.printf(nameS[k]+",");
+					  }
+					  System.out.println();
+					  for(int i = 0; i < totalSim; i++)
+					   {
+						  System.out.printf("%5d, ", multi[i][0] );
+					      for(int j = (Interface.size()); j >= 1; j--)
+					      {
+					        
+					    	  System.out.printf("%5d, ", multi[i][j]);
+					      }
+					      System.out.println();
+					   }
+		// Printing Input in the file:
+					
+					  FileWriter infile = null;
+					try {
+						infile = new FileWriter("ModelInput.csv");
+					} catch (IOException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+				        PrintWriter pinp = new PrintWriter(infile);
+				        pinp.println("Boolean Input");
+				        for(int k=nameS.length-1;k>=0;k--)
+						  {
+
+							  pinp.print(nameS[k]); pinp.print(";");
+						  }
+				        pinp.println();
+				       
+						  for(int i = 0; i < totalSim; i++)
+						   {
+							
+							  pinp.print(multi[i][0]); pinp.print(";");
+							 //System.out.printf("%5d, ",  multi[i][0]);
+						      for(int j = (Interface.size()); j >= 1; j--)
+						      {
+						        
+						    	  pinp.print( multi[i][j]); pinp.print(";");
+						    	  // System.out.printf("%5d, ", BooleanOutput[i][j]);
+						      }
+						      	
+						       pinp.println();
+						   }
+				       
+				       
+				      //Flush the input to the file
+				        pinp.flush();
+				        
+				        //Close the Print Writer
+				        pinp.close();
+				        
+				        //Close the File Writer
+				        try {
+				        	infile.close();
+						} catch (IOException e) {
+							// TODO Auto-generated catch block
+							e.printStackTrace();
+						}    
+					  
+		    //Output table
+					  System.out.println("\n\nFollowing is the output table : \n");
+					  for(int k=nameS.length-1;k>=0;k--)
+					  {
+
+					         System.out.printf(nameS[k]+",");
+					  }
+					  System.out.println();
+					  for(int i = 0; i < totalSim; i++)
+					   {
+						  System.out.printf("%5d, ", multi[i][0] );
+					      for(int j = (Interface.size()); j >= 1; j--)
+					      {
+					        
+					    	  System.out.printf("%5d, ", BooleanOutput[i][j]);
+					      }
+					      System.out.println();
+					   }
+					  
+		// Printing output in the output file:
+					  FileWriter fw = null;
+						try {
+							fw = new FileWriter("ModelOutput.csv");
+						} catch (IOException e) {
+							// TODO Auto-generated catch block
+							e.printStackTrace();
+						}
+				        PrintWriter pw = new PrintWriter(fw);
+				        pw.println("Boolean Output  " + "Percentage in the initial value : " + setInitPercentage*100 + "percentage while checking final output " + per*100 + "Skip in the duration : " + skip + " precision "+ precision );
+				        for(int k=nameS.length-1;k>=0;k--)
+						  {
+
+							  pw.print(nameS[k]); pw.print(";");
+						  }
+				        pw.println();
+				       
+						  for(int i = 0; i < totalSim; i++)
+						   {
+							
+							  pw.print(multi[i][0]); pw.print(";");
+							 //System.out.printf("%5d, ",  multi[i][0]);
+						      for(int j = (Interface.size()); j >= 1; j--)
+						      {
+						        
+						    	 pw.print( BooleanOutput[i][j]); pw.print(";");
+						    	  // System.out.printf("%5d, ", BooleanOutput[i][j]);
+						      }
+						      	
+						       pw.println();
+						   }
+				       
+				       
+						  //Flush the output to the file
+						  pw.flush();
+				        
+						  //Close the Print Writer
+						  pw.close();
+				        
+						  
+					        
+	/* *********** Writting a CSV file containing Boolean input and output, for converting in GINSim format ***********  */
+						  FileWriter InpOut = null;
+							try {
+								InpOut = new FileWriter("ModelInputOutput.csv");
+							} catch (IOException e) {
+								// TODO Auto-generated catch block
+								e.printStackTrace();
+							}
+							PrintWriter pInpout = new PrintWriter(InpOut);
+						  for(int k=nameS.length-2;k>=0;k--)
+							  {
+
+							  pInpout.print(nameS[k]); pInpout.print(";");
+							  if(k==0)
+							  {pInpout.print(""); pInpout.print(";");
+								  for(int k1=nameS.length-2;k1>=0;k1--)
+								  {
+
+								  pInpout.print(nameS[k1]); pInpout.print(";");
+								 
+								  }
+							  }
+							  }
+						  pInpout.println();
+					       for(int i = 0; i < totalSim; i++)
+							   {
+								
+					        //	pInpout.print(multi[i][0]); pInpout.print(";");
+								 //System.out.printf("%5d, ",  multi[i][0]);
+							      for(int j = (Interface.size()); j >= 1; j--)
+							      {
+							        
+							    	  pInpout.print( multi[i][j]); pInpout.print(";");
+							    	  // System.out.printf("%5d, ", BooleanOutput[i][j]);
+							    	  if(j==1)
+							    	  {
+							    		  pInpout.print(""); pInpout.print(";");
+							    		  for(int j1 = (Interface.size()); j1 >= 1; j1--)
+									      {
+									        
+									    	  pInpout.print( BooleanOutput[i][j1]); pInpout.print(";");
+									    	  // System.out.printf("%5d, ", BooleanOutput[i][j]);
+									      } 
+							    	  }
+							      }
+							      	
+							      pInpout.println();
+							   }
+					       
+				
+						  pInpout.flush();
+						  pInpout.close();
+						  try {
+								InpOut.close();
+							} catch (IOException e) {
+								// TODO Auto-generated catch block
+								e.printStackTrace();
+							}
+						  
+		/* ***************************************************************************************************************  */    
+					      //Close the File Writer
+							  
+					        try {
+								fw.close();
+							} catch (IOException e) {
+								// TODO Auto-generated catch block
+								e.printStackTrace();
+							}
+		/* ***************************************************************************************************************  */    
+		//Code for converting the CSV file in the GINSim input format(".tt"). GINSim does not take names from the file. It gives names by itself ("G0,G1..").
+		//So in our file we have to remove the first raw which shows the names of the species.
+					        FileWriter InpOutGin = null;
+							try {
+								InpOutGin = new FileWriter("ModelInputOutputGin.txt");
+							} catch (IOException e) {
+								// TODO Auto-generated catch block
+								e.printStackTrace();
+							}
+							PrintWriter pInpoutGin = new PrintWriter(InpOutGin);
+						/*  for(int k=nameS.length-2;k>=0;k--)
+							  {
+
+							  pInpoutGin.print(nameS[k]); pInpoutGin.print(";");
+							  if(k==0)
+							  {pInpoutGin.print(""); pInpoutGin.print(";");
+								  for(int k1=nameS.length-2;k1>=0;k1--)
+								  {
+
+								  pInpoutGin.print(nameS[k1]); pInpoutGin.print(";");
+								 
+								  }
+							  }
+							  } 
+						  pInpoutGin.println();*/
+					       for(int i = 0; i < totalSim; i++)
+							   {
+								
+					        //	pInpout.print(multi[i][0]); pInpout.print(";");
+								 //System.out.printf("%5d, ",  multi[i][0]);
+							      for(int j = (Interface.size()); j >= 1; j--)
+							      {
+							        
+							    	  pInpoutGin.print( multi[i][j]); pInpoutGin.print("");
+							    	  // System.out.printf("%5d, ", BooleanOutput[i][j]);
+							    	  if(j==1)
+							    	  {
+							    		  pInpoutGin.print("  "); pInpoutGin.print("");
+							    		  for(int j1 = (Interface.size()); j1 >= 1; j1--)
+									      {
+									        
+									    	  pInpoutGin.print( BooleanOutput[i][j1]); pInpoutGin.print("");
+									    	  // System.out.printf("%5d, ", BooleanOutput[i][j]);
+									      } 
+							    	  }
+							      }
+							      	
+							      pInpoutGin.println();
+							   }
+					       
+				
+						  pInpoutGin.flush();
+						  pInpoutGin.close();
+						  try {
+								InpOutGin.close();
+							} catch (IOException e) {
+								// TODO Auto-generated catch block
+								e.printStackTrace();
+							}	   
+						// Code to convert and replace above "text" file with ".tt" file.  
+						  String targetExtension=".tt";  
+							 File file = new File("ModelInputOutputGin.txt");
+							  String f1 =  file.getName();
+							   
+							        String ext =f1.substring(f1.indexOf("."));  
+							        System.out.println(ext);  
+							        if(ext.equalsIgnoreCase(".txt")) {//2  
+							          File f = new File(f1);  
+							          //if the file exists  
+							          // then change the filename  
+							          if(f.exists()) {//3  
+							           f1=f1.replace(ext,targetExtension);  
+							           System.out.println(" "+f1);  
+							           File change = new File(f1);  
+							       	   f.renameTo(change);  
+							          }//3  
+							          //if file does not exists then create a new file  
+							          else {//3  
+							                     try {  
+							            f.createNewFile();  
+							            f1=f1.replace(ext,targetExtension);  
+							            System.out.println(" "+f1);  
+							   
+							            File change = new File(f1);  
+							            change.setExecutable(true);
+							            f.renameTo(change);  
+							          }//try  
+							          catch(IOException ioe) {  
+							   
+							          }//catch  
+							   
+							        }//3  
+							   
+							      }//2  
+						   
+						  
+						   
+		/* ***************************************************************************************************************  */   
+	    /* *********************************        Code for launching GINSim        ************************************  */
+							       
+							        
+							        	        
+        /* ***************************************************************************************************************  */    
+																							        
+					        
+					        //Calculating the time
+					        long stopTime = System.currentTimeMillis();
+					        long elapsedTime = stopTime - startTime;
+					        System.out.println(elapsedTime);
+					        System.out.println("Percentage in the initial value : " + setInitPercentage*100 + "percentage while checking final output " + per*100 + "Skip in the duration : " + skip + " precision "+ precision);
+					        
+							 
+      }
+     else
+     {
+    	 System.out.println("The simulation results could be checked in : testNOGlobal.csv");
+     }
+     }
+     else
+     {
+    	 System.out.println("Please check the typed letter or check the code");
+     }
+	       
+         
+    } 
+      
+ 
+ 
+       
+     
+ public static CTrajectoryTask getTrajectoryTask(CCopasiDataModel dataModel,
+         CModel model,CReportDefinition report )
+ {
+	 CTrajectoryTask trajectoryTask = (CTrajectoryTask) dataModel.getTask("Time-Course");
+	 assert trajectoryTask != null;
+     // if there isn’t one
+     if (trajectoryTask == null)
+     {
+         // create a new one
+         trajectoryTask = new CTrajectoryTask();
+         // add the new time course task to the task list
+         // this method makes sure that the object is now owned
+         // by the list and that it does not get deleted by SWIG
+         dataModel.getTaskList().addAndOwn(trajectoryTask);
+     }
+     trajectoryTask.setMethodType(CCopasiMethod.deterministic);
+     trajectoryTask.getProblem().setModel(dataModel.getModel());
+     // actiavate the task so that it will be run when the model is saved
+     // and passed to CopasiSE
+     trajectoryTask.setScheduled(true);
+     // set the report for the task
+     trajectoryTask.getReport().setReportDefinition(report);
+     // set the output filename
+     trajectoryTask.getReport().setTarget("EGFR.txt");
+     // don’t append output if the file exists, but overwrite the file
+     trajectoryTask.getReport().setAppend(false);
+     // get the problem for the task to set some parameters
+     CTrajectoryProblem problem = (CTrajectoryProblem) trajectoryTask.getProblem();
+     // simulate 6000 steps
+     problem.setStepNumber(6000);
+     // start at time 0
+     dataModel.getModel().setInitialTime(0.0);
+     // simulate a duration of 10 time units
+     problem.setDuration(6000);
+     // tell the problem to actually generate time series data
+     problem.setTimeSeriesRequested(true);
+     // set some parameters for the LSODA method through the method
+     CTrajectoryMethod method = (CTrajectoryMethod) trajectoryTask.getMethod();
+     CCopasiParameter test_parameter = method.getParameter("");
+     if (test_parameter == null)
+     {
+     //System.out.println("There is no parameter: 'Adams Max Order'");
+     } else
+     System.out.println("The index is : " + method.getIndex("Adams Max Order"));
+     assert method.getIndex("") == COPASI.INVALID_INDEX();
+     CCopasiParameter parameter = method.getParameter("Absolute Tolerance");
+     assert parameter != null;
+     assert parameter.getType() == CCopasiParameter.DOUBLE;
+     parameter.setDblValue(1.0e-12);
+   
+     
+     boolean result = true;
+                 
+     try
+     {
+         // now we run the actual trajectory
+         result = trajectoryTask.process(true);
+     }
+     catch (java.lang.Exception ex)
+     {
+         System.err.println("Error. Running the time course simulation failed.");
+         	// check if there are additional error messages
+         if (CCopasiMessage.size() > 0)
+         {
+            // print the messages in chronological order
+             System.err.println(CCopasiMessage.getAllMessageText(true));
+         }
+         System.exit(1);
+     }
+     if (result == false)
+     {
+         System.err.println("An error occured while running the time course simulation.");
+         		// check if there are additional error messages
+         if (CCopasiMessage.size() > 0)
+         {
+             // print the messages in chronological order
+             System.err.println(CCopasiMessage.getAllMessageText(true));
+         }
+         System.exit(1);
+     }
+     model.updateInitialValues();
+     model.updateNonSimulatedValues();
+    
+	 return trajectoryTask;
+ }
+    
+ public static CReportDefinition createReport(CCopasiDataModel dataModel,
+                                              CModel model)
+ {
+     CReportDefinitionVector reports = dataModel.getReportDefinitionList();
+     	// create a new report definition object
+     CReportDefinition report = reports.createReportDefinition("Report",
+                                                               "Output for timecourse");
+     if (report == null)
+     {
+         // another report with that name already exists, change the name
+         report = reports.createReportDefinition("Report1",
+                                                 "Output for timecourse");
+     }
+     // set the task type for the report definition to timecourse
+     report.setTaskType(CCopasiTask.timeCourse);
+     // we don’t want a table
+     report.setIsTable(false);
+     // the entries in the output should be seperated by a ", "
+     report.setSeparator(new CCopasiReportSeparator("; "));
+     // we need a handle to the header and the body
+     // the header will display the ids of the metabolites and "time" for
+     // the first column
+     // the body will contain the actual timecourse data
+     ReportItemVector header = report.getHeaderAddr();
+     ReportItemVector body = report.getBodyAddr();
+     // body.add(new CRegisteredObjectName(model.getObject(new
+     // CCopasiObjectName(" Reference=Time")).getCN().getString()));
+     body.add(new CRegisteredObjectName(report.getSeparator().getCN()
+                                              .getString()));
+     header.add(new CRegisteredObjectName(
+                                          new CCopasiStaticString("time").getCN()
+                                                                         .getString()));
+     header.add(new CRegisteredObjectName(report.getSeparator().getCN()
+                                                .getString()));
+
+     int i1, iMax1 = (int) model.getMetabolites().size();
+
+     for (i1 = 0; i1 < iMax1; ++i1)
+     {
+         CMetab metab = model.getMetabolite(i1);
+         assert metab != null;
+         if(metab.getNotes().contains("interface"))
+         {
+         // we don’t want output for FIXED metabolites right now
+         if (metab.getStatus() != CModelEntity.FIXED)
+         {
+             // we want the concentration oin the output
+             // alternatively, we could use "Reference=Amount" to get the
+             // particle number
+             body.add(new CRegisteredObjectName(
+                                                metab.getObject(new CCopasiObjectName(
+                                                                                      "Reference=Concentration"))
+                                                     .getCN().getString()));
+             // add the corresponding id to the header
+             header.add(new CRegisteredObjectName(
+                                                  new CCopasiStaticString(
+                                                                          metab.getObjectDisplayName()).getCN()
+                                                                                            .getString()));
+             // after each entry, we need a seperator
+             if (i1 != iMax1 - 1)
+             {
+                 body.add(new CRegisteredObjectName(report.getSeparator()
+                                                          .getCN()
+                                                          .getString()));
+                 header.add(new CRegisteredObjectName(report.getSeparator()
+                                                            .getCN()
+                                                            .getString()));
+                 
+             }
+         }
+         }
+     }
+     return report;
+ }
+
+ public static void printStatistic(CModel model)
+ {
+     System.out.println("Model statistics for model \""
+         + model.getObjectName() + "\".");
+     int i, iMax = (int) model.getCompartments().size();
+     System.out.println("Number of Compartments: "
+         + (new Integer(iMax)).toString());
+     System.out.println("Compartments: ");
+     for (i = 0; i < iMax; ++i)
+     {
+         CCompartment compartment = model.getCompartment(i);
+         assert compartment != null;
+         System.out.println("\t" + compartment.getObjectName());
+     }
+     iMax = (int) model.getMetabolites().size();
+     System.out.println("Number of Metabolites: " + (new Integer(iMax)).toString());
+     System.out.println("Metabolites: ");
+     for (i = 0; i < iMax; ++i)
+     {
+         CMetab metab = model.getMetabolite(i);
+         assert metab != null;
+         System.out.println("\t" + metab.getObjectName());
+     }
+     iMax = (int) model.getReactions().size();
+     System.out.println("Number of Reactions: "
+         + (new Integer(iMax)).toString());
+     System.out.println("Reactions: ");
+     
+     for (i = 0; i < iMax; ++i)
+     {
+         
+     	CReaction reaction = model.getReaction(i);
+         assert reaction != null;
+         if (reaction.getParameters().size() == 1)
+         {
+         	System.out.println("\t" +reaction.getNotes()+'\t'+ reaction.getObjectDisplayName() + "\t" + reaction.getParameters().getParameter(0).getObjectDisplayName() + "= " + reaction.getParameters().getParameter(0).getDblValue() );
+         	
+         }
+         else
+         {
+         	System.out.println("\t" +reaction.getNotes()+'\t'+reaction.getObjectDisplayName() + "\t" + reaction.getParameters().getParameter(0).getObjectDisplayName() + "= " + reaction.getParameters().getParameter(0).getDblValue() + 
+             		reaction.getParameters().getParameter(1).getObjectDisplayName() + "= " + reaction.getParameters().getParameter(1).getDblValue() );
+         }
+         	
+        
+     }
+     
+     
+ }
+}
